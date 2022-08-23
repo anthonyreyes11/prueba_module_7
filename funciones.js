@@ -7,7 +7,7 @@ pool.connect(err => {
   }
 })
 
-const formatDate = (current_datetime)=>{
+const formatDate = (current_datetime) => {
   let formatted_date = current_datetime.getFullYear() + "-" + (current_datetime.getMonth() + 1) + "-" + current_datetime.getDate() + " " + current_datetime.getHours() + ":" + current_datetime.getMinutes() + ":" + current_datetime.getSeconds();
   return formatted_date;
 }
@@ -30,13 +30,15 @@ async function nuevoUsuario(nombre, balance) {
   client.release()
 
 }
+
 const mostrarUsuario = async () => {
   const client = await pool.connect()
+
   let resp = await client.query(`select * from usuarios`)
   client.release()
   return resp.rows
-
 }
+
 async function editarUsuario(id, nombre, balance) {
   const client = await pool.connect()
   await client.query({
@@ -44,35 +46,64 @@ async function editarUsuario(id, nombre, balance) {
     values: [nombre, balance, id]
   })
   client.release()
-
 }
+
 async function eliminarUsuario(id) {
-  try {
-    const client = await pool.connect()
-    await client.query(`delete from transferencia where emisor=${id} or receptor=${id}`)
-    await client.query(`delete from usuarios where id=${id}`)
-    client.release()
-  }
-  catch (error) {
-    console.log(error);
-  }
-}
-async function crearTransferencia(emisor,receptor,monto,data){
   const client = await pool.connect()
-  let id_emisor = await client.query(`select id from usuarios where nombre='${emisor}'`)
-  let id_receptor = await client.query(`select id from usuarios where nombre='${receptor}'`)
-  await client.query(`insert into transferencias (emisor, receptor, monto,fecha) values (${id_emisor.rows[0].id},${id_receptor.rows[0].id},${monto},'${data}')`)
+  await client.query(`delete from transferencias where emisor=${id} or receptor=${id} returning *`)
+  await client.query(`delete from usuarios where id=${id}returning *`)
   client.release()
-
 }
-async function historialTransferencias(){
+
+async function crearTransferencia(emisor, receptor, monto, data) {
   const client = await pool.connect()
-  const mostrarUsuarios = await  client.query({
-    text: `select transferencias.id, emisores.nombre as Emisor, receptores.nombre as Receptor, Monto,fecha FROM transferencias Join usuarios as emisores on emisor=emisores.id join usuarios as receptores on receptor= receptores.id`,
-     rowMode: 'array'
+
+  //seleccionamos datos del emisor
+  let info_e = await client.query(`select id,balance from usuarios where nombre='${emisor}'`)
+  let data_emisor = info_e.rows[0]
+  let id_emisor=data_emisor.id
+  let balance_emisor = data_emisor.balance
+
+
+  //seleccionamos datos del receptor
+  let info_r = await client.query(`select id,balance from usuarios where nombre='${receptor}'`)
+  let data_receptor = info_r.rows[0]
+  let id_receptor=data_receptor.id
+  let balance_receptor = data_receptor.balance
+
+  if (balance_emisor < monto){
+    return
+  }
+  if (balance_emisor < 0) {
+    return
+  }
+  if (balance_emisor < 0) {
+    return
+  }
+
+  //se debe actualizar el monto del balance del emisor(se debe restar)
+  const resta = parseInt(balance_emisor) - monto
+  const suma = parseInt(balance_receptor) + parseInt(monto)
+  const montoActualizarEmisor =  await client.query(`update usuarios set balance=${resta} where id=${id_emisor}`)
+  //se debe actualizar el monto de balance del receptor(se debe sumar)
+  const montoActualizarReceptor=  await client.query(`update usuarios set balance=${suma} where id=${id_receptor}`)
+
+  await client.query(`insert into transferencias (emisor, receptor, monto,fecha) values (${id_emisor},${id_receptor},${monto},'${data}')`)
+  client.release()
+}
+async function historialTransferencias() {
+  const client = await pool.connect()
+  let datos;
+
+  const mostrarUsuarios = await client.query({
+    text: `SELECT fecha, emisores.nombre as Emisor, receptores.nombre as Receptor, Monto FROM transferencias
+    JOIN usuarios as emisores ON emisor=emisores.id
+    join usuarios as receptores on receptor= receptores.id`,
+    rowMode: 'array'
   })
-  let datos = mostrarUsuarios.rows
-  console.log(datos);
+  datos = mostrarUsuarios.rows
+  
+  //console.log(datos);
   client.release()
   return datos
 }
@@ -81,7 +112,7 @@ async function historialTransferencias(){
 
 
 
-module.exports = { nuevoUsuario, mostrarUsuario, editarUsuario, eliminarUsuario, getform,crearTransferencia,historialTransferencias,formatDate}
+module.exports = { nuevoUsuario, mostrarUsuario, editarUsuario, eliminarUsuario, getform, crearTransferencia, historialTransferencias, formatDate }
 
 
 
